@@ -12,3 +12,4 @@ nbconvert==7.16.4
 
 # temp fix, uv fails to install 3.10.7 
 orjson<=3.10.6
+langchain-experimental>=0.3.1 # not directly required, pinned by Snyk to avoid a vulnerability
