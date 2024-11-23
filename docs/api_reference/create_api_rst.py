@@ -318,7 +318,7 @@ def _construct_doc(
 
         index_autosummary += f"""
 :ref:`{package_namespace}_{module}`
-{'^' * (len(module) + 5)}
+{'^' * (len(package_namespace) + len(module) + 8)}
 """
 
         if classes:
@@ -448,7 +448,6 @@ def _construct_doc(
 """
         docs.append((f"{module}.rst", module_doc))
     docs.append(("index.rst", index_doc + index_autosummary))
-
     return docs
 
 
@@ -472,11 +471,19 @@ def _build_rst_file(package_name: str = "langchain") -> None:
 
 
 def _package_namespace(package_name: str) -> str:
-    return (
-        package_name
-        if package_name == "langchain"
-        else f"langchain_{package_name.replace('-', '_')}"
-    )
+    """Returns the package name used.
+
+    Args:
+        package_name: Can be either "langchain" or "core" or "experimental".
+
+    Returns:
+        modified package_name: Can be either "langchain" or "langchain_{package_name}"
+    """
+    if package_name == "langchain":
+        return "langchain"
+    if package_name == "standard-tests":
+        return "langchain_tests"
+    return f"langchain_{package_name.replace('-', '_')}"
 
 
 def _package_dir(package_name: str = "langchain") -> Path:
@@ -488,6 +495,7 @@ def _package_dir(package_name: str = "langchain") -> Path:
         "core",
         "cli",
         "text-splitters",
+        "standard-tests",
     ):
         return ROOT_DIR / "libs" / package_name / _package_namespace(package_name)
     else:
@@ -523,54 +531,14 @@ def _out_file_path(package_name: str) -> Path:
 
 def _build_index(dirs: List[str]) -> None:
     custom_names = {
-        "airbyte": "Airbyte",
         "aws": "AWS",
         "ai21": "AI21",
+        "ibm": "IBM",
     }
     ordered = ["core", "langchain", "text-splitters", "community", "experimental"]
     main_ = [dir_ for dir_ in ordered if dir_ in dirs]
     integrations = sorted(dir_ for dir_ in dirs if dir_ not in main_)
-    main_headers = [
-        " ".join(custom_names.get(x, x.title()) for x in dir_.split("-"))
-        for dir_ in main_
-    ]
-    integration_headers = [
-        " ".join(
-            custom_names.get(x, x.title().replace("ai", "AI").replace("db", "DB"))
-            for x in dir_.split("-")
-        )
-        for dir_ in integrations
-    ]
-    main_tree = "\n".join(
-        f"{header_name}<{dir_.replace('-', '_')}/index>"
-        for header_name, dir_ in zip(main_headers, main_)
-    )
-    main_grid = "\n".join(
-        f'- header: "**{header_name}**"\n  content: "{_package_namespace(dir_).replace("_", "-")}: {_get_package_version(_package_dir(dir_))}"\n  link: {dir_.replace("-", "_")}/index.html'
-        for header_name, dir_ in zip(main_headers, main_)
-    )
-    integration_tree = "\n".join(
-        f"{header_name}<{dir_.replace('-', '_')}/index>"
-        for header_name, dir_ in zip(integration_headers, integrations)
-    )
-
-    integration_grid = ""
-    integrations_to_show = [
-        "openai",
-        "anthropic",
-        "google-vertexai",
-        "aws",
-        "huggingface",
-        "mistralai",
-    ]
-    for header_name, dir_ in sorted(
-        zip(integration_headers, integrations),
-        key=lambda h_d: integrations_to_show.index(h_d[1])
-        if h_d[1] in integrations_to_show
-        else len(integrations_to_show),
-    )[: len(integrations_to_show)]:
-        integration_grid += f'\n- header: "**{header_name}**"\n  content: {_package_namespace(dir_).replace("_", "-")} {_get_package_version(_package_dir(dir_))}\n  link: {dir_.replace("-", "_")}/index.html'
-    doc = f"""# LangChain Python API Reference
+    doc = """# LangChain Python API Reference
 
 Welcome to the LangChain Python API reference. This is a reference for all 
 `langchain-x` packages. 
@@ -578,8 +546,22 @@ Welcome to the LangChain Python API reference. This is a reference for all
 For user guides see [https://python.langchain.com](https://python.langchain.com).
 
 For the legacy API reference hosted on ReadTheDocs see [https://api.python.langchain.com/](https://api.python.langchain.com/).
+"""
 
-## Base packages
+    if main_:
+        main_headers = [
+            " ".join(custom_names.get(x, x.title()) for x in dir_.split("-"))
+            for dir_ in main_
+        ]
+        main_tree = "\n".join(
+            f"{header_name}<{dir_.replace('-', '_')}/index>"
+            for header_name, dir_ in zip(main_headers, main_)
+        )
+        main_grid = "\n".join(
+            f'- header: "**{header_name}**"\n  content: "{_package_namespace(dir_).replace("_", "-")}: {_get_package_version(_package_dir(dir_))}"\n  link: {dir_.replace("-", "_")}/index.html'
+            for header_name, dir_ in zip(main_headers, main_)
+        )
+        doc += f"""## Base packages
 
 ```{{gallery-grid}}
 :grid-columns: "1 2 2 3"
@@ -594,8 +576,39 @@ For the legacy API reference hosted on ReadTheDocs see [https://api.python.langc
 
 {main_tree}
 ```
+"""
+    if integrations:
+        integration_headers = [
+            " ".join(
+                custom_names.get(x, x.title().replace("ai", "AI").replace("db", "DB"))
+                for x in dir_.split("-")
+            )
+            for dir_ in integrations
+        ]
+        integration_tree = "\n".join(
+            f"{header_name}<{dir_.replace('-', '_')}/index>"
+            for header_name, dir_ in zip(integration_headers, integrations)
+        )
 
-## Integrations
+        integration_grid = ""
+        integrations_to_show = [
+            "openai",
+            "anthropic",
+            "google-vertexai",
+            "aws",
+            "huggingface",
+            "mistralai",
+        ]
+        for header_name, dir_ in sorted(
+            zip(integration_headers, integrations),
+            key=lambda h_d: (
+                integrations_to_show.index(h_d[1])
+                if h_d[1] in integrations_to_show
+                else len(integrations_to_show)
+            ),
+        )[: len(integrations_to_show)]:
+            integration_grid += f'\n- header: "**{header_name}**"\n  content: {_package_namespace(dir_).replace("_", "-")} {_get_package_version(_package_dir(dir_))}\n  link: {dir_.replace("-", "_")}/index.html'
+        doc += f"""## Integrations
 
 ```{{gallery-grid}}
 :grid-columns: "1 2 2 3"
@@ -612,7 +625,6 @@ See the full list of integrations in the Section Navigation.
 
 {integration_tree}
 ```
-
 """
     with open(HERE / "reference.md", "w") as f:
         f.write(doc)
@@ -638,7 +650,7 @@ def main(dirs: Optional[list] = None) -> None:
         dirs = [
             dir_
             for dir_ in os.listdir(ROOT_DIR / "libs")
-            if dir_ not in ("cli", "partners", "standard-tests")
+            if dir_ not in ("cli", "partners", "packages.yml")
         ]
         dirs += [
             dir_
