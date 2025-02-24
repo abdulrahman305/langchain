@@ -26,7 +26,7 @@ class TestXAIStandard(ChatModelIntegrationTests):
     @property
     def chat_model_params(self) -> dict:
         return {
-            "model": "grok-beta",
+            "model": "grok-2",
             "rate_limiter": rate_limiter,
         }
 
@@ -38,15 +38,3 @@ class TestXAIStandard(ChatModelIntegrationTests):
     @pytest.mark.xfail(reason="Not yet supported.")
     def test_usage_metadata_streaming(self, model: BaseChatModel) -> None:
         super().test_usage_metadata_streaming(model)
-
-    @pytest.mark.xfail(reason="Can't handle AIMessage with empty content.")
-    def test_tool_message_error_status(self, model: BaseChatModel) -> None:
-        super().test_tool_message_error_status(model)
-
-    @pytest.mark.xfail(reason="Can't handle AIMessage with empty content.")
-    def test_structured_few_shot_examples(self, model: BaseChatModel) -> None:
-        super().test_structured_few_shot_examples(model)
-
-    @pytest.mark.xfail(reason="Can't handle AIMessage with empty content.")
-    def test_tool_message_histories_string_content(self, model: BaseChatModel) -> None:
-        super().test_tool_message_histories_string_content(model)

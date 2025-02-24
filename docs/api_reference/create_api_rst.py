@@ -72,13 +72,20 @@ def _load_module_members(module_path: str, namespace: str) -> ModuleMembers:
     Returns:
         list: A list of loaded module objects.
     """
+
     classes_: List[ClassInfo] = []
     functions: List[FunctionInfo] = []
     module = importlib.import_module(module_path)
+
+    if ":private:" in (module.__doc__ or ""):
+        return ModuleMembers(classes_=[], functions=[])
+
     for name, type_ in inspect.getmembers(module):
         if not hasattr(type_, "__module__"):
             continue
         if type_.__module__ != module_path:
+            continue
+        if ":private:" in (type_.__doc__ or ""):
             continue
 
         if inspect.isclass(type_):
@@ -521,7 +528,12 @@ def _get_package_version(package_dir: Path) -> str:
             "Aborting the build."
         )
         exit(1)
-    return pyproject["tool"]["poetry"]["version"]
+    try:
+        # uses uv
+        return pyproject["project"]["version"]
+    except KeyError:
+        # uses poetry
+        return pyproject["tool"]["poetry"]["version"]
 
 
 def _out_file_path(package_name: str) -> Path:

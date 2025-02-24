@@ -1,11 +1,13 @@
 """Test OpenAI Chat API wrapper."""
 
 import json
+from functools import partial
 from types import TracebackType
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langchain_core.load import dumps, loads
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
@@ -17,6 +19,8 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.messages.ai import UsageMetadata
+from langchain_core.outputs import ChatGeneration
+from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
@@ -27,6 +31,7 @@ from langchain_openai.chat_models.base import (
     _convert_to_openai_response_format,
     _create_usage_metadata,
     _format_message_content,
+    _oai_structured_outputs_parser,
 )
 
 
@@ -35,6 +40,11 @@ def test_openai_model_param() -> None:
     assert llm.model_name == "foo"
     llm = ChatOpenAI(model_name="foo")  # type: ignore[call-arg]
     assert llm.model_name == "foo"
+
+    llm = ChatOpenAI(max_tokens=10)  # type: ignore[call-arg]
+    assert llm.max_tokens == 10
+    llm = ChatOpenAI(max_completion_tokens=10)
+    assert llm.max_tokens == 10
 
 
 def test_openai_o1_temperature() -> None:
@@ -91,6 +101,16 @@ def test__convert_dict_to_message_system() -> None:
     message = {"role": "system", "content": "foo"}
     result = _convert_dict_to_message(message)
     expected_output = SystemMessage(content="foo")
+    assert result == expected_output
+    assert _convert_message_to_dict(expected_output) == message
+
+
+def test__convert_dict_to_message_developer() -> None:
+    message = {"role": "developer", "content": "foo"}
+    result = _convert_dict_to_message(message)
+    expected_output = SystemMessage(
+        content="foo", additional_kwargs={"__openai_role__": "developer"}
+    )
     assert result == expected_output
     assert _convert_message_to_dict(expected_output) == message
 
@@ -731,7 +751,7 @@ class Foo(BaseModel):
 def test_schema_from_with_structured_output(schema: Type) -> None:
     """Test schema from with_structured_output."""
 
-    llm = ChatOpenAI()
+    llm = ChatOpenAI(model="gpt-4o")
 
     structured_llm = llm.with_structured_output(
         schema, method="json_schema", strict=True
@@ -845,3 +865,74 @@ def test_nested_structured_output_strict() -> None:
         self_evaluation: SelfEvaluation
 
     llm.with_structured_output(JokeWithEvaluation, method="json_schema")
+
+
+def test__get_request_payload() -> None:
+    llm = ChatOpenAI(model="gpt-4o-2024-08-06")
+    messages: list = [
+        SystemMessage("hello"),
+        SystemMessage("bye", additional_kwargs={"__openai_role__": "developer"}),
+        {"role": "human", "content": "how are you"},
+    ]
+    expected = {
+        "messages": [
+            {"role": "system", "content": "hello"},
+            {"role": "developer", "content": "bye"},
+            {"role": "user", "content": "how are you"},
+        ],
+        "model": "gpt-4o-2024-08-06",
+        "stream": False,
+    }
+    payload = llm._get_request_payload(messages)
+    assert payload == expected
+
+    # Test we coerce to developer role for o-series models
+    llm = ChatOpenAI(model="o3-mini")
+    payload = llm._get_request_payload(messages)
+    expected = {
+        "messages": [
+            {"role": "developer", "content": "hello"},
+            {"role": "developer", "content": "bye"},
+            {"role": "user", "content": "how are you"},
+        ],
+        "model": "o3-mini",
+        "stream": False,
+    }
+    assert payload == expected
+
+
+def test_init_o1() -> None:
+    with pytest.warns(None) as record:  # type: ignore[call-overload]
+        ChatOpenAI(model="o1", reasoning_effort="medium")
+    assert len(record) == 0
+
+
+def test_structured_output_old_model() -> None:
+    class Output(TypedDict):
+        """output."""
+
+        foo: str
+
+    with pytest.warns(match="Cannot use method='json_schema'"):
+        llm = ChatOpenAI(model="gpt-4").with_structured_output(Output)
+    # assert tool calling was used instead of json_schema
+    assert "tools" in llm.steps[0].kwargs  # type: ignore
+    assert "response_format" not in llm.steps[0].kwargs  # type: ignore
+
+
+def test_structured_outputs_parser() -> None:
+    parsed_response = GenerateUsername(name="alice", hair_color="black")
+    llm_output = ChatGeneration(
+        message=AIMessage(
+            content='{"name": "alice", "hair_color": "black"}',
+            additional_kwargs={"parsed": parsed_response},
+        )
+    )
+    output_parser = RunnableLambda(
+        partial(_oai_structured_outputs_parser, schema=GenerateUsername)
+    )
+    serialized = dumps(llm_output)
+    deserialized = loads(serialized)
+    assert isinstance(deserialized, ChatGeneration)
+    result = output_parser.invoke(deserialized.message)
+    assert result == parsed_response
