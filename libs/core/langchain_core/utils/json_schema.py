@@ -1,8 +1,12 @@
+"""Utilities for JSON Schema."""
+
 from __future__ import annotations
 
-from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _retrieve_ref(path: str, schema: dict) -> dict:

@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from langchain_core.documents import Document
 from langchain_core.example_selectors.base import BaseExampleSelector
 from langchain_core.vectorstores import VectorStore
 
 if TYPE_CHECKING:
+    from langchain_core.documents import Document
     from langchain_core.embeddings import Embeddings
 
 
@@ -328,8 +328,7 @@ class MaxMarginalRelevanceExampleSelector(_VectorStoreExampleSelector):
         vectorstore_kwargs: Optional[dict] = None,
         **vectorstore_cls_kwargs: Any,
     ) -> MaxMarginalRelevanceExampleSelector:
-        """Asynchronously create k-shot example selector using example list and
-        embeddings.
+        """Create k-shot example selector using example list and embeddings.
 
         Reshuffles examples dynamically based on Max Marginal Relevance.
 

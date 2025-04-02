@@ -1,3 +1,5 @@
+"""Convert functions and runnables to tools."""
+
 import inspect
 from typing import Any, Callable, Literal, Optional, Union, get_type_hints, overload
 
@@ -5,7 +7,7 @@ from pydantic import BaseModel, Field, create_model
 
 from langchain_core.callbacks import Callbacks
 from langchain_core.runnables import Runnable
-from langchain_core.tools.base import BaseTool
+from langchain_core.tools.base import ArgsSchema, BaseTool
 from langchain_core.tools.simple import Tool
 from langchain_core.tools.structured import StructuredTool
 
@@ -13,8 +15,9 @@ from langchain_core.tools.structured import StructuredTool
 @overload
 def tool(
     *,
+    description: Optional[str] = None,
     return_direct: bool = False,
-    args_schema: Optional[type] = None,
+    args_schema: Optional[ArgsSchema] = None,
     infer_schema: bool = True,
     response_format: Literal["content", "content_and_artifact"] = "content",
     parse_docstring: bool = False,
@@ -27,8 +30,9 @@ def tool(
     name_or_callable: str,
     runnable: Runnable,
     *,
+    description: Optional[str] = None,
     return_direct: bool = False,
-    args_schema: Optional[type] = None,
+    args_schema: Optional[ArgsSchema] = None,
     infer_schema: bool = True,
     response_format: Literal["content", "content_and_artifact"] = "content",
     parse_docstring: bool = False,
@@ -40,8 +44,9 @@ def tool(
 def tool(
     name_or_callable: Callable,
     *,
+    description: Optional[str] = None,
     return_direct: bool = False,
-    args_schema: Optional[type] = None,
+    args_schema: Optional[ArgsSchema] = None,
     infer_schema: bool = True,
     response_format: Literal["content", "content_and_artifact"] = "content",
     parse_docstring: bool = False,
@@ -53,8 +58,9 @@ def tool(
 def tool(
     name_or_callable: str,
     *,
+    description: Optional[str] = None,
     return_direct: bool = False,
-    args_schema: Optional[type] = None,
+    args_schema: Optional[ArgsSchema] = None,
     infer_schema: bool = True,
     response_format: Literal["content", "content_and_artifact"] = "content",
     parse_docstring: bool = False,
@@ -66,8 +72,9 @@ def tool(
     name_or_callable: Optional[Union[str, Callable]] = None,
     runnable: Optional[Runnable] = None,
     *args: Any,
+    description: Optional[str] = None,
     return_direct: bool = False,
-    args_schema: Optional[type] = None,
+    args_schema: Optional[ArgsSchema] = None,
     infer_schema: bool = True,
     response_format: Literal["content", "content_and_artifact"] = "content",
     parse_docstring: bool = False,
@@ -83,6 +90,15 @@ def tool(
             converted to a tool. Must be provided as a positional argument.
         runnable: Optional runnable to convert to a tool. Must be provided as a
             positional argument.
+        description: Optional description for the tool.
+            Precedence for the tool description value is as follows:
+                - `description` argument
+                    (used even if docstring and/or `args_schema` are provided)
+                - tool function docstring
+                    (used even if `args_schema` is provided)
+                - `args_schema` description
+                    (used only if `description` / docstring are not provided)
+        *args: Extra positional arguments. Must be empty.
         return_direct: Whether to return directly from the tool rather
             than continuing the agent loop. Defaults to False.
         args_schema: optional argument schema for user to specify.
@@ -198,7 +214,7 @@ def tool(
                     monkey: The baz.
                 \"\"\"
                 return bar
-    """
+    """  # noqa: D214,D405,D410,D411,D412,D416
 
     def _create_tool_factory(
         tool_name: str,
@@ -213,6 +229,7 @@ def tool(
         """
 
         def _tool_factory(dec_func: Union[Callable, Runnable]) -> BaseTool:
+            tool_description = description
             if isinstance(dec_func, Runnable):
                 runnable = dec_func
 
@@ -232,25 +249,23 @@ def tool(
 
                 coroutine = ainvoke_wrapper
                 func = invoke_wrapper
-                schema: Optional[type[BaseModel]] = runnable.input_schema
-                description = repr(runnable)
+                schema: Optional[ArgsSchema] = runnable.input_schema
+                tool_description = description or repr(runnable)
             elif inspect.iscoroutinefunction(dec_func):
                 coroutine = dec_func
                 func = None
                 schema = args_schema
-                description = None
             else:
                 coroutine = None
                 func = dec_func
                 schema = args_schema
-                description = None
 
             if infer_schema or args_schema is not None:
                 return StructuredTool.from_function(
                     func,
                     coroutine,
                     name=tool_name,
-                    description=description,
+                    description=tool_description,
                     return_direct=return_direct,
                     args_schema=schema,
                     infer_schema=infer_schema,
