@@ -28,7 +28,7 @@
     "@docusaurus/theme-mermaid": "3.5.2",
     "@giscus/react": "^3.0.0",
     "@mdx-js/react": "^3",
-    "@supabase/supabase-js": "^2.39.7",
+    "@supabase/supabase-js": "^2.50.0",
     "clsx": "^1.2.1",
     "cookie": "^0.6.0",
     "isomorphic-dompurify": "^2.7.0",
