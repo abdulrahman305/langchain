@@ -130,6 +130,8 @@ class RunLogPatch:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, RunLogPatch) and self.ops == other.ops
 
+    __hash__ = None  # type: ignore[assignment]
+
 
 class RunLog(RunLogPatch):
     """Run log."""
@@ -174,6 +176,8 @@ class RunLog(RunLogPatch):
         # Then compare that the ops are the same
         return super().__eq__(other)
 
+    __hash__ = None
+
 
 T = TypeVar("T")
 
@@ -206,7 +210,9 @@ class LogStreamCallbackHandler(BaseTracer, _StreamingCallbackHandler):
             exclude_tags: Exclude runs from Runnables with matching tags.
             _schema_format: Primarily changes how the inputs and outputs are
                 handled.
+
                 **For internal use only. This API will change.**
+
                 - 'original' is the format used by all current tracers.
                   This format is slightly inconsistent with respect to inputs
                   and outputs.
@@ -580,7 +586,7 @@ def _get_standardized_outputs(
 @overload
 def _astream_log_implementation(
     runnable: Runnable[Input, Output],
-    input: Any,
+    value: Any,
     config: Optional[RunnableConfig] = None,
     *,
     stream: LogStreamCallbackHandler,
@@ -593,7 +599,7 @@ def _astream_log_implementation(
 @overload
 def _astream_log_implementation(
     runnable: Runnable[Input, Output],
-    input: Any,
+    value: Any,
     config: Optional[RunnableConfig] = None,
     *,
     stream: LogStreamCallbackHandler,
@@ -605,7 +611,7 @@ def _astream_log_implementation(
 
 async def _astream_log_implementation(
     runnable: Runnable[Input, Output],
-    input: Any,
+    value: Any,
     config: Optional[RunnableConfig] = None,
     *,
     stream: LogStreamCallbackHandler,
@@ -632,7 +638,7 @@ async def _astream_log_implementation(
     if callbacks is None:
         config["callbacks"] = [stream]
     elif isinstance(callbacks, list):
-        config["callbacks"] = callbacks + [stream]
+        config["callbacks"] = [*callbacks, stream]
     elif isinstance(callbacks, BaseCallbackManager):
         callbacks = callbacks.copy()
         callbacks.add_handler(stream, inherit=True)
@@ -651,7 +657,7 @@ async def _astream_log_implementation(
             prev_final_output: Optional[Output] = None
             final_output: Optional[Output] = None
 
-            async for chunk in runnable.astream(input, config, **kwargs):
+            async for chunk in runnable.astream(value, config, **kwargs):
                 prev_final_output = final_output
                 if final_output is None:
                     final_output = chunk
@@ -694,7 +700,7 @@ async def _astream_log_implementation(
         else:
             state = RunLog(state=None)  # type: ignore[arg-type]
             async for log in stream:
-                state = state + log
+                state += log
                 yield state
     finally:
         # Wait for the runnable to finish, if not cancelled (eg. by break)

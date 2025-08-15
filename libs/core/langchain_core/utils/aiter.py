@@ -144,7 +144,7 @@ async def tee_peer(
             yield buffer.popleft()
     finally:
         async with lock:
-            # this peer is done – remove its buffer
+            # this peer is done - remove its buffer
             for idx, peer_buffer in enumerate(peers):  # pragma: no branch
                 if peer_buffer is buffer:
                     peers.pop(idx)
@@ -189,6 +189,7 @@ class Tee(Generic[T]):
     To enforce sequential use of ``anext``, provide a ``lock``
     - e.g. an :py:class:`asyncio.Lock` instance in an :py:mod:`asyncio` application -
     and access is automatically synchronised.
+
     """
 
     def __init__(
@@ -266,10 +267,14 @@ class aclosing(AbstractAsyncContextManager):  # noqa: N801
 
     Code like this:
 
+    .. code-block:: python
+
         async with aclosing(<module>.fetch(<arguments>)) as agen:
             <block>
 
     is equivalent to this:
+
+    .. code-block:: python
 
         agen = <module>.fetch(<arguments>)
         try:

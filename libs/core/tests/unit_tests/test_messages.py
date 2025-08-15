@@ -178,6 +178,22 @@ def test_message_chunks() -> None:
     assert AIMessageChunk(content="") + left == left
     assert right + AIMessageChunk(content="") == right
 
+    # Test ID order of precedence
+    null_id = AIMessageChunk(content="", id=None)
+    default_id = AIMessageChunk(
+        content="", id="run-abc123"
+    )  # LangChain-assigned run ID
+    meaningful_id = AIMessageChunk(content="", id="msg_def456")  # provider-assigned ID
+
+    assert (null_id + default_id).id == "run-abc123"
+    assert (default_id + null_id).id == "run-abc123"
+
+    assert (null_id + meaningful_id).id == "msg_def456"
+    assert (meaningful_id + null_id).id == "msg_def456"
+
+    assert (default_id + meaningful_id).id == "msg_def456"
+    assert (meaningful_id + default_id).id == "msg_def456"
+
 
 def test_chat_message_chunks() -> None:
     assert ChatMessageChunk(role="User", content="I am", id="ai4") + ChatMessageChunk(
@@ -439,9 +455,9 @@ def test_message_chunk_to_message() -> None:
         tool_calls=[
             create_tool_call(name="tool1", args={"a": 1}, id="1"),
             create_tool_call(name="tool2", args={}, id="2"),
+            create_tool_call(name="tool3", args={}, id="3"),
         ],
         invalid_tool_calls=[
-            create_invalid_tool_call(name="tool3", args=None, id="3", error=None),
             create_invalid_tool_call(name="tool4", args="abc", id="4", error=None),
         ],
     )
@@ -924,7 +940,7 @@ def test_tool_message_serdes() -> None:
 
 
 class BadObject:
-    """"""
+    pass
 
 
 def test_tool_message_ser_non_serializable() -> None:
@@ -1003,6 +1019,11 @@ def test_tool_message_str() -> None:
         ("foo", [["bar"]], ["foo", "bar"]),
         (["foo"], ["bar"], ["foobar"]),
         (["foo"], [["bar"]], ["foo", "bar"]),
+        (
+            [{"text": "foo"}],
+            [[{"index": 0, "text": "bar"}]],
+            [{"text": "foo"}, {"index": 0, "text": "bar"}],
+        ),
     ],
 )
 def test_merge_content(

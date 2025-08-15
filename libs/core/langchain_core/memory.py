@@ -3,7 +3,7 @@
 This module contains memory abstractions from LangChain v0.0.x.
 
 These abstractions are now deprecated and will be removed in LangChain v1.0.0.
-"""  # noqa: E501
+"""
 
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ class BaseMemory(Serializable, ABC):
 
                 def clear(self) -> None:
                     pass
+
     """  # noqa: E501
 
     model_config = ConfigDict(

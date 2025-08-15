@@ -277,7 +277,7 @@ def _convert_any_typed_dicts_to_pydantic(
         )
         fields: dict = {}
         for arg, arg_type in annotations_.items():
-            if get_origin(arg_type) is Annotated:
+            if get_origin(arg_type) is Annotated:  # type: ignore[comparison-overlap]
                 annotated_args = get_args(arg_type)
                 new_arg_type = _convert_any_typed_dicts_to_pydantic(
                     annotated_args[0], depth=depth + 1, visited=visited
@@ -294,8 +294,6 @@ def _convert_any_typed_dicts_to_pydantic(
                     raise ValueError(msg)
                 if arg_desc := arg_descriptions.get(arg):
                     field_kwargs["description"] = arg_desc
-                else:
-                    pass
                 fields[arg] = (new_arg_type, Field_v1(**field_kwargs))
             else:
                 new_arg_type = _convert_any_typed_dicts_to_pydantic(
@@ -456,7 +454,7 @@ def convert_to_openai_function(
         oai_function = {
             k: v
             for k, v in function.items()
-            if k in ("name", "description", "parameters", "strict")
+            if k in {"name", "description", "parameters", "strict"}
         }
     # a JSON schema with title and description
     elif isinstance(function, dict) and "title" in function:
@@ -504,6 +502,20 @@ def convert_to_openai_function(
                 oai_function["parameters"]
             )
     return oai_function
+
+
+# List of well known tools supported by OpenAI's chat models or responses API.
+# These tools are not expected to be supported by other chat model providers
+# that conform to the OpenAI function-calling API.
+_WellKnownOpenAITools = (
+    "function",
+    "file_search",
+    "computer_use_preview",
+    "code_interpreter",
+    "mcp",
+    "image_generation",
+    "web_search_preview",
+)
 
 
 def convert_to_openai_tool(
@@ -554,13 +566,32 @@ def convert_to_openai_tool(
         Return OpenAI Responses API-style tools unchanged. This includes
         any dict with "type" in "file_search", "function", "computer_use_preview",
         "web_search_preview".
+
+    .. versionchanged:: 0.3.61
+
+        Added support for OpenAI's built-in code interpreter and remote MCP tools.
+
+    .. versionchanged:: 0.3.63
+
+        Added support for OpenAI's image generation built-in tool.
     """
+    from langchain_core.tools import Tool
+
     if isinstance(tool, dict):
-        if tool.get("type") in ("function", "file_search", "computer_use_preview"):
+        if tool.get("type") in _WellKnownOpenAITools:
             return tool
         # As of 03.12.25 can be "web_search_preview" or "web_search_preview_2025_03_11"
         if (tool.get("type") or "").startswith("web_search_preview"):
             return tool
+    if isinstance(tool, Tool) and (tool.metadata or {}).get("type") == "custom_tool":
+        oai_tool = {
+            "type": "custom",
+            "name": tool.name,
+            "description": tool.description,
+        }
+        if tool.metadata is not None and "format" in tool.metadata:
+            oai_tool["format"] = tool.metadata["format"]
+        return oai_tool
     oai_function = convert_to_openai_function(tool, strict=strict)
     return {"type": "function", "function": oai_function}
 
@@ -609,15 +640,16 @@ def tool_example_to_messages(
 
     The list of messages per example by default corresponds to:
 
-    1) HumanMessage: contains the content from which content should be extracted.
-    2) AIMessage: contains the extracted information from the model
-    3) ToolMessage: contains confirmation to the model that the model requested a tool
-        correctly.
+    1. ``HumanMessage``: contains the content from which content should be extracted.
+    2. ``AIMessage``: contains the extracted information from the model
+    3. ``ToolMessage``: contains confirmation to the model that the model requested a
+       tool correctly.
 
-    If `ai_response` is specified, there will be a final AIMessage with that response.
+    If ``ai_response`` is specified, there will be a final ``AIMessage`` with that
+    response.
 
-    The ToolMessage is required because some chat models are hyper-optimized for agents
-    rather than for an extraction use case.
+    The ``ToolMessage`` is required because some chat models are hyper-optimized for
+    agents rather than for an extraction use case.
 
     Arguments:
         input: string, the user input
@@ -626,7 +658,7 @@ def tool_example_to_messages(
         tool_outputs: Optional[list[str]], a list of tool call outputs.
             Does not need to be provided. If not provided, a placeholder value
             will be inserted. Defaults to None.
-        ai_response: Optional[str], if provided, content for a final AIMessage.
+        ai_response: Optional[str], if provided, content for a final ``AIMessage``.
 
     Returns:
         A list of messages
@@ -646,7 +678,7 @@ def tool_example_to_messages(
                     ..., description="The color of the person's hair if known"
                 )
                 height_in_meters: Optional[str] = Field(
-                    ..., description="Height in METERs"
+                    ..., description="Height in METERS"
                 )
 
             examples = [
@@ -667,6 +699,7 @@ def tool_example_to_messages(
                 messages.extend(
                     tool_example_to_messages(txt, [tool_call])
                 )
+
     """
     messages: list[BaseMessage] = [HumanMessage(content=input)]
     openai_tool_calls = [
@@ -707,12 +740,13 @@ def _parse_google_docstring(
     """Parse the function and argument descriptions from the docstring of a function.
 
     Assumes the function docstring follows Google Python style guide.
+
     """
     if docstring:
         docstring_blocks = docstring.split("\n\n")
         if error_on_invalid_docstring:
             filtered_annotations = {
-                arg for arg in args if arg not in ("run_manager", "callbacks", "return")
+                arg for arg in args if arg not in {"run_manager", "callbacks", "return"}
             }
             if filtered_annotations and (
                 len(docstring_blocks) < 2
@@ -748,8 +782,8 @@ def _parse_google_docstring(
             if ":" in line:
                 arg, desc = line.split(":", maxsplit=1)
                 arg = arg.strip()
-                arg_name, _, _annotations = arg.partition(" ")
-                if _annotations.startswith("(") and _annotations.endswith(")"):
+                arg_name, _, annotations_ = arg.partition(" ")
+                if annotations_.startswith("(") and annotations_.endswith(")"):
                     arg = arg_name
                 arg_descriptions[arg] = desc.strip()
             elif arg:
@@ -788,9 +822,12 @@ def _recursive_set_additional_properties_false(
             schema["additionalProperties"] = False
 
         # Recursively check 'properties' and 'items' if they exist
+        if "anyOf" in schema:
+            for sub_schema in schema["anyOf"]:
+                _recursive_set_additional_properties_false(sub_schema)
         if "properties" in schema:
-            for value in schema["properties"].values():
-                _recursive_set_additional_properties_false(value)
+            for sub_schema in schema["properties"].values():
+                _recursive_set_additional_properties_false(sub_schema)
         if "items" in schema:
             _recursive_set_additional_properties_false(schema["items"])
 

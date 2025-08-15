@@ -8,14 +8,12 @@ from typing import Any, Optional
 
 from typing_extensions import override
 
-from langchain_core._api import beta
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage
 from langchain_core.messages.ai import UsageMetadata, add_usage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 
-@beta()
 class UsageMetadataCallbackHandler(BaseCallbackHandler):
     """Callback Handler that tracks AIMessage.usage_metadata.
 
@@ -46,6 +44,7 @@ class UsageMetadataCallbackHandler(BaseCallbackHandler):
               'input_token_details': {'cache_read': 0, 'cache_creation': 0}}}
 
     .. versionadded:: 0.3.49
+
     """
 
     def __init__(self) -> None:
@@ -90,7 +89,6 @@ class UsageMetadataCallbackHandler(BaseCallbackHandler):
 
 
 @contextmanager
-@beta()
 def get_usage_metadata_callback(
     name: str = "usage_metadata_callback",
 ) -> Generator[UsageMetadataCallbackHandler, None, None]:
@@ -101,7 +99,7 @@ def get_usage_metadata_callback(
 
     Args:
         name (str): The name of the context variable. Defaults to
-            ``"usage_metadata_callback"``.
+            ``'usage_metadata_callback'``.
 
     Example:
         .. code-block:: python
@@ -130,6 +128,7 @@ def get_usage_metadata_callback(
               'input_token_details': {'cache_read': 0, 'cache_creation': 0}}}
 
     .. versionadded:: 0.3.49
+
     """
     from langchain_core.tracers.context import register_configure_hook
 

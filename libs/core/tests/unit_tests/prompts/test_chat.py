@@ -380,7 +380,10 @@ def test_chat_prompt_template_with_messages(
     messages: list[BaseMessagePromptTemplate],
 ) -> None:
     chat_prompt_template = ChatPromptTemplate.from_messages(
-        messages + [HumanMessage(content="foo")]
+        [
+            *messages,
+            HumanMessage(content="foo"),
+        ]
     )
     assert sorted(chat_prompt_template.input_variables) == sorted(
         [
@@ -778,7 +781,8 @@ async def test_chat_tmpl_from_messages_multipart_formatting_with_path() -> None:
     )
     with pytest.raises(
         ValueError,
-        match="Loading images from 'path' has been removed as of 0.3.15 for security reasons.",
+        match="Loading images from 'path' has been removed "
+        "as of 0.3.15 for security reasons.",
     ):
         template.format_messages(
             name="R2D2",
@@ -788,7 +792,8 @@ async def test_chat_tmpl_from_messages_multipart_formatting_with_path() -> None:
 
     with pytest.raises(
         ValueError,
-        match="Loading images from 'path' has been removed as of 0.3.15 for security reasons.",
+        match="Loading images from 'path' has been removed "
+        "as of 0.3.15 for security reasons.",
     ):
         await template.aformat_messages(
             name="R2D2",
@@ -882,7 +887,10 @@ def test_chat_prompt_message_placeholder_dict() -> None:
 
 def test_chat_prompt_message_dict() -> None:
     prompt = ChatPromptTemplate(
-        [{"role": "system", "content": "foo"}, {"role": "user", "content": "bar"}]
+        [
+            {"role": "system", "content": "foo"},
+            {"role": "user", "content": "bar"},
+        ]
     )
     assert prompt.format_messages() == [
         SystemMessage(content="foo"),
@@ -974,6 +982,11 @@ def test_chat_tmpl_serdes(snapshot: SnapshotAssertion) -> None:
                         {"text": "What's in this image?"},
                         {"type": "text", "text": "What's in this image?"},
                         {
+                            "type": "text",
+                            "text": "What's in this image?",
+                            "cache_control": {"type": "{foo}"},
+                        },
+                        {
                             "type": "image_url",
                             "image_url": "data:image/jpeg;base64,{my_image}",
                         },
@@ -1012,7 +1025,7 @@ def test_chat_tmpl_serdes(snapshot: SnapshotAssertion) -> None:
 @pytest.mark.xfail(
     reason=(
         "In a breaking release, we can update `_convert_to_message_template` to use "
-        "_DictMessagePromptTemplate for all `dict` inputs, allowing for templatization "
+        "DictPromptTemplate for all `dict` inputs, allowing for templatization "
         "of message attributes outside content blocks. That would enable the below "
         "test to pass."
     )

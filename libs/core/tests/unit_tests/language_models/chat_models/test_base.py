@@ -13,6 +13,7 @@ from langchain_core.language_models import (
     FakeListChatModel,
     ParrotFakeChatModel,
 )
+from langchain_core.language_models._utils import _normalize_messages
 from langchain_core.language_models.fake_chat_models import FakeListChatModelError
 from langchain_core.messages import (
     AIMessage,
@@ -162,10 +163,15 @@ async def test_astream_fallback_to_ainvoke() -> None:
 
     model = ModelWithGenerate()
     chunks = list(model.stream("anything"))
-    assert chunks == [_any_id_ai_message(content="hello")]
+    # BaseChatModel.stream is typed to return Iterator[BaseMessageChunk].
+    # When streaming is disabled, it returns Iterator[BaseMessage], so the type hint
+    # is not strictly correct.
+    # LangChain documents a pattern of adding BaseMessageChunks to accumulate a stream.
+    # This may be better done with `reduce(operator.add, chunks)`.
+    assert chunks == [_any_id_ai_message(content="hello")]  # type: ignore[comparison-overlap]
 
     chunks = [chunk async for chunk in model.astream("anything")]
-    assert chunks == [_any_id_ai_message(content="hello")]
+    assert chunks == [_any_id_ai_message(content="hello")]  # type: ignore[comparison-overlap]
 
 
 async def test_astream_implementation_fallback_to_stream() -> None:
@@ -323,6 +329,7 @@ class StreamingModel(NoStreamingModel):
 
 @pytest.mark.parametrize("disable_streaming", [True, False, "tool_calling"])
 def test_disable_streaming(
+    *,
     disable_streaming: Union[bool, Literal["tool_calling"]],
 ) -> None:
     model = StreamingModel(disable_streaming=disable_streaming)
@@ -335,7 +342,7 @@ def test_disable_streaming(
         == expected
     )
 
-    expected = "invoke" if disable_streaming in ("tool_calling", True) else "stream"
+    expected = "invoke" if disable_streaming in {"tool_calling", True} else "stream"
     assert next(model.stream([], tools=[{"type": "function"}])).content == expected
     assert (
         model.invoke(
@@ -347,6 +354,7 @@ def test_disable_streaming(
 
 @pytest.mark.parametrize("disable_streaming", [True, False, "tool_calling"])
 async def test_disable_streaming_async(
+    *,
     disable_streaming: Union[bool, Literal["tool_calling"]],
 ) -> None:
     model = StreamingModel(disable_streaming=disable_streaming)
@@ -360,7 +368,7 @@ async def test_disable_streaming_async(
         await model.ainvoke([], config={"callbacks": [_AstreamEventsCallbackHandler()]})
     ).content == expected
 
-    expected = "invoke" if disable_streaming in ("tool_calling", True) else "stream"
+    expected = "invoke" if disable_streaming in {"tool_calling", True} else "stream"
     async for c in model.astream([], tools=[{}]):
         assert c.content == expected
         break
@@ -373,6 +381,7 @@ async def test_disable_streaming_async(
 
 @pytest.mark.parametrize("disable_streaming", [True, False, "tool_calling"])
 def test_disable_streaming_no_streaming_model(
+    *,
     disable_streaming: Union[bool, Literal["tool_calling"]],
 ) -> None:
     model = NoStreamingModel(disable_streaming=disable_streaming)
@@ -387,6 +396,7 @@ def test_disable_streaming_no_streaming_model(
 
 @pytest.mark.parametrize("disable_streaming", [True, False, "tool_calling"])
 async def test_disable_streaming_no_streaming_model_async(
+    *,
     disable_streaming: Union[bool, Literal["tool_calling"]],
 ) -> None:
     model = NoStreamingModel(disable_streaming=disable_streaming)
@@ -455,3 +465,192 @@ def test_trace_images_in_openai_format() -> None:
             "url": "https://example.com/image.png",
         }
     ]
+
+
+def test_trace_content_blocks_with_no_type_key() -> None:
+    """Test that we add a ``type`` key to certain content blocks that don't have one."""
+    llm = ParrotFakeChatModel()
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Hello",
+                },
+                {
+                    "cachePoint": {"type": "default"},
+                },
+            ],
+        }
+    ]
+    tracer = FakeChatModelStartTracer()
+    response = llm.invoke(messages, config={"callbacks": [tracer]})
+    assert tracer.messages == [
+        [
+            [
+                HumanMessage(
+                    [
+                        {
+                            "type": "text",
+                            "text": "Hello",
+                        },
+                        {
+                            "type": "cachePoint",
+                            "cachePoint": {"type": "default"},
+                        },
+                    ]
+                )
+            ]
+        ]
+    ]
+    # Test no mutation
+    assert response.content == [
+        {
+            "type": "text",
+            "text": "Hello",
+        },
+        {
+            "cachePoint": {"type": "default"},
+        },
+    ]
+
+
+def test_extend_support_to_openai_multimodal_formats() -> None:
+    """Test that chat models normalize OpenAI file and audio inputs."""
+    llm = ParrotFakeChatModel()
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Hello"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.com/image.png"},
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."},
+                },
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": "draconomicon.pdf",
+                        "file_data": "data:application/pdf;base64,<base64 string>",
+                    },
+                },
+                {
+                    "type": "file",
+                    "file": {
+                        "file_data": "data:application/pdf;base64,<base64 string>",
+                    },
+                },
+                {
+                    "type": "file",
+                    "file": {"file_id": "<file id>"},
+                },
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": "<base64 data>", "format": "wav"},
+                },
+            ],
+        },
+    ]
+    expected_content = [
+        {"type": "text", "text": "Hello"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "https://example.com/image.png"},
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."},
+        },
+        {
+            "type": "file",
+            "source_type": "base64",
+            "data": "<base64 string>",
+            "mime_type": "application/pdf",
+            "filename": "draconomicon.pdf",
+        },
+        {
+            "type": "file",
+            "source_type": "base64",
+            "data": "<base64 string>",
+            "mime_type": "application/pdf",
+        },
+        {
+            "type": "file",
+            "file": {"file_id": "<file id>"},
+        },
+        {
+            "type": "audio",
+            "source_type": "base64",
+            "data": "<base64 data>",
+            "mime_type": "audio/wav",
+        },
+    ]
+    response = llm.invoke(messages)
+    assert response.content == expected_content
+
+    # Test no mutation
+    assert messages[0]["content"] == [
+        {"type": "text", "text": "Hello"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "https://example.com/image.png"},
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."},
+        },
+        {
+            "type": "file",
+            "file": {
+                "filename": "draconomicon.pdf",
+                "file_data": "data:application/pdf;base64,<base64 string>",
+            },
+        },
+        {
+            "type": "file",
+            "file": {
+                "file_data": "data:application/pdf;base64,<base64 string>",
+            },
+        },
+        {
+            "type": "file",
+            "file": {"file_id": "<file id>"},
+        },
+        {
+            "type": "input_audio",
+            "input_audio": {"data": "<base64 data>", "format": "wav"},
+        },
+    ]
+
+
+def test_normalize_messages_edge_cases() -> None:
+    # Test some blocks that should pass through
+    messages = [
+        HumanMessage(
+            content=[
+                {
+                    "type": "file",
+                    "file": "uri",
+                },
+                {
+                    "type": "input_file",
+                    "file_data": "uri",
+                    "filename": "file-name",
+                },
+                {
+                    "type": "input_audio",
+                    "input_audio": "uri",
+                },
+                {
+                    "type": "input_image",
+                    "image_url": "uri",
+                },
+            ]
+        )
+    ]
+    assert messages == _normalize_messages(messages)

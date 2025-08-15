@@ -5,12 +5,7 @@ import inspect
 import typing
 from collections.abc import AsyncIterator, Iterator, Sequence
 from functools import wraps
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import override
@@ -85,6 +80,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                 | model
                 | StrOutputParser()
             ).with_fallbacks([RunnableLambda(when_all_is_lost)])
+
     """
 
     runnable: Runnable[Input, Output]
@@ -269,7 +265,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
         from langchain_core.callbacks.manager import CallbackManager
 
         if self.exception_key is not None and not all(
-            isinstance(input, dict) for input in inputs
+            isinstance(input_, dict) for input_ in inputs
         ):
             msg = (
                 "If 'exception_key' is specified then inputs must be dictionaries."
@@ -298,11 +294,11 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
         run_managers = [
             cm.on_chain_start(
                 None,
-                input if isinstance(input, dict) else {"input": input},
+                input_ if isinstance(input_, dict) else {"input": input_},
                 name=config.get("run_name") or self.get_name(),
                 run_id=config.pop("run_id", None),
             )
-            for cm, input, config in zip(callback_managers, inputs, configs)
+            for cm, input_, config in zip(callback_managers, inputs, configs)
         ]
 
         to_return: dict[int, Any] = {}
@@ -311,7 +307,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
         first_to_raise = None
         for runnable in self.runnables:
             outputs = runnable.batch(
-                [input for _, input in sorted(run_again.items())],
+                [input_ for _, input_ in sorted(run_again.items())],
                 [
                     # each step a child run of the corresponding root run
                     patch_config(configs[i], callbacks=run_managers[i].get_child())
@@ -320,7 +316,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                 return_exceptions=True,
                 **kwargs,
             )
-            for (i, input), output in zip(sorted(run_again.copy().items()), outputs):
+            for (i, input_), output in zip(sorted(run_again.copy().items()), outputs):
                 if isinstance(output, BaseException) and not isinstance(
                     output, self.exceptions_to_handle
                 ):
@@ -331,7 +327,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                     run_again.pop(i)
                 elif isinstance(output, self.exceptions_to_handle):
                     if self.exception_key:
-                        input[self.exception_key] = output  # type: ignore[index]
+                        input_[self.exception_key] = output  # type: ignore[index]
                     handled_exceptions[i] = output
                 else:
                     run_managers[i].on_chain_end(output)
@@ -363,7 +359,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
         from langchain_core.callbacks.manager import AsyncCallbackManager
 
         if self.exception_key is not None and not all(
-            isinstance(input, dict) for input in inputs
+            isinstance(input_, dict) for input_ in inputs
         ):
             msg = (
                 "If 'exception_key' is specified then inputs must be dictionaries."
@@ -393,21 +389,21 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
             *(
                 cm.on_chain_start(
                     None,
-                    input,
+                    input_,
                     name=config.get("run_name") or self.get_name(),
                     run_id=config.pop("run_id", None),
                 )
-                for cm, input, config in zip(callback_managers, inputs, configs)
+                for cm, input_, config in zip(callback_managers, inputs, configs)
             )
         )
 
-        to_return = {}
+        to_return: dict[int, Union[Output, BaseException]] = {}
         run_again = dict(enumerate(inputs))
         handled_exceptions: dict[int, BaseException] = {}
         first_to_raise = None
         for runnable in self.runnables:
             outputs = await runnable.abatch(
-                [input for _, input in sorted(run_again.items())],
+                [input_ for _, input_ in sorted(run_again.items())],
                 [
                     # each step a child run of the corresponding root run
                     patch_config(configs[i], callbacks=run_managers[i].get_child())
@@ -417,7 +413,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                 **kwargs,
             )
 
-            for (i, input), output in zip(sorted(run_again.copy().items()), outputs):
+            for (i, input_), output in zip(sorted(run_again.copy().items()), outputs):
                 if isinstance(output, BaseException) and not isinstance(
                     output, self.exceptions_to_handle
                 ):
@@ -428,7 +424,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                     run_again.pop(i)
                 elif isinstance(output, self.exceptions_to_handle):
                     if self.exception_key:
-                        input[self.exception_key] = output  # type: ignore[index]
+                        input_[self.exception_key] = output  # type: ignore[index]
                     handled_exceptions[i] = output
                 else:
                     to_return[i] = output
@@ -451,7 +447,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
         if not return_exceptions and sorted_handled_exceptions:
             raise sorted_handled_exceptions[0][1]
         to_return.update(handled_exceptions)
-        return [output for _, output in sorted(to_return.items())]  # type: ignore[misc]
+        return [cast("Output", output) for _, output in sorted(to_return.items())]
 
     @override
     def stream(
@@ -573,7 +569,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
             async for chunk in stream:
                 yield chunk
                 try:
-                    output = output + chunk
+                    output = output + chunk  # type: ignore[operator]
                 except TypeError:
                     output = None
         except BaseException as e:
@@ -598,7 +594,7 @@ class RunnableWithFallbacks(RunnableSerializable[Input, Output]):
                 from langchain_anthropic import ChatAnthropic
 
                 gpt_4o = ChatOpenAI(model="gpt-4o")
-                claude_3_sonnet = ChatAnthropic(model="claude-3-sonnet-20240229")
+                claude_3_sonnet = ChatAnthropic(model="claude-3-7-sonnet-20250219")
                 llm = gpt_4o.with_fallbacks([claude_3_sonnet])
 
                 llm.model_name

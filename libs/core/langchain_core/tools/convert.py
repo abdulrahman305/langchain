@@ -144,7 +144,8 @@ def tool(
                 return "partial json of results", {"full": "object of results"}
 
     .. versionadded:: 0.2.14
-    Parse Google-style docstrings:
+
+        Parse Google-style docstrings:
 
         .. code-block:: python
 
@@ -214,7 +215,8 @@ def tool(
                     monkey: The baz.
                 \"\"\"
                 return bar
-    """  # noqa: D214,D405,D410,D411,D412,D416
+
+    """  # noqa: D214, D410, D411
 
     def _create_tool_factory(
         tool_name: str,
@@ -367,7 +369,7 @@ def _get_schema_from_runnable_and_arg_types(
             msg = (
                 "Tool input must be str or dict. If dict, dict arguments must be "
                 "typed. Either annotate types (e.g., with TypedDict) or pass "
-                f"arg_types into `.as_tool` to specify. {str(e)}"
+                f"arg_types into `.as_tool` to specify. {e}"
             )
             raise TypeError(msg) from e
     fields = {key: (key_type, Field(...)) for key, key_type in arg_types.items()}
